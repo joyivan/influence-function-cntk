@@ -7,7 +7,7 @@ from skimage.color import rgba2rgb
 
 from torch.utils.data import DataLoader
 
-def grad_cam(model, dataset, root_dir, filename_list, anno_dict, class_idx, target_conv_layer_name, **kwargs):
+def grad_cam(model, data_set, class_idx, target_conv_layer_name, **kwargs):
     """
     Generate Grad-CAM visualization (for model-predicted class).
     :param model: ConvNet model.
@@ -25,7 +25,6 @@ def grad_cam(model, dataset, root_dir, filename_list, anno_dict, class_idx, targ
     cmap_name = kwargs.pop('cmap_name', 'jet')
     num_workers = kwargs.pop('num_workers', 4)
 
-    data_set = dataset.Dataset(root_dir, filename_list, anno_dict)
     dataloader = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
 
     target_conv_layer = model.d[target_conv_layer_name]    # ((N, )D, h, w)
@@ -146,7 +145,7 @@ def guided_backprop(model, dataset, target_conv_layer_name, **kwargs):
     return gb_output
 
 
-def get_feature_maps(model, dataset, root_dir, filename_list, anno_dict, target_conv_layer_name, **kwargs):
+def get_feature_maps(model, data_set, target_conv_layer_name, **kwargs):
     """
     Get feature maps on selected convolutional layer.
     :param model: ConvNet model.
@@ -162,7 +161,6 @@ def get_feature_maps(model, dataset, root_dir, filename_list, anno_dict, target_
     augment_pred = kwargs.pop('augment_pred', False)
     num_workers = kwargs.pop('num_workers', 4)
 
-    data_set = dataset.Dataset(root_dir, filename_list, anno_dict)
     dataloader = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
 
     target_conv_layer = model.d[target_conv_layer_name]    # ((N, )D, h, w)
