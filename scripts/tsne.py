@@ -28,23 +28,27 @@ def show_image_from_data(img):
 
 set_trace()
 
-# emnist dataset
+# FIXME
 root_dir = '/Data/emnist/balanced/original'
+file_dir = './compare/result_net_nn_if_nn/train_e_99502'
+filename = 'if_cg_logreg'
+#filename = 'if_se_logreg'
 
 # sample size
 #trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1', sample_size=100)
 #test_list, _ = dataset.read_data_subset(root_dir, mode='validation1', sample_size=100)
-trainval_list = np.load('./trainval_list.npy')
-test_list = np.load('./test_list.npy')
+trainval_list = np.load(file_dir+'/trainval_list.npy')
+test_list = np.load(file_dir+'/test_list.npy')
 #temp_list, _ = dataset.read_data_subset(root_dir, mode='test') # 18000 samples
-temp_list, _ = dataset.read_data_subset(root_dir, mode='test', sample_size=2000) # 18000 samples
+#temp_list, _ = dataset.read_data_subset(root_dir, mode='test', sample_size=2000)
+temp_list = list(np.load('./images/tsne/temp_list.npy'))
 
 with open('/Data/emnist/balanced/original/annotation/annotation1.json','r') as fid:
     anno_dict = json.load(fid)
-with open('/Data/emnist/balanced/original/annotation/annotation1_wp_0.3.json','r') as fid:
-    noisy_anno_dict = json.load(fid)
+#with open('/Data/emnist/balanced/original/annotation/annotation1_wp_0.3.json','r') as fid:
+#    noisy_anno_dict = json.load(fid)
     
-train_set = dataset.LazyDataset(root_dir, trainval_list, noisy_anno_dict)
+train_set = dataset.LazyDataset(root_dir, trainval_list, anno_dict)
 test_set = dataset.LazyDataset(root_dir, test_list, anno_dict)
     
 # emnist dataset: SANITY CHECK
@@ -56,7 +60,7 @@ from models.nn import VGG as ConvNet
 
 hp_d = dict() # hyperparameters for a network
 net = ConvNet(train_set.__getitem__(0)[0].shape, len(anno_dict['classes']), **hp_d)
-net.logits.restore('/Data/checkpts/noisy/model_fold_1_trainval_ratio_1.0.dnn')
+net.logits.restore('/Data/checkpts/noisy/model_fold_1_trainval_ratio_0.0.dnn')
 
 # emnist network: SANITY CHECK
 start_time = time.time()
@@ -73,10 +77,10 @@ print('Confusion matrix: \n{}'.format(confusion_matrix))
 # IF_cg_logreg = IF_val(net, ihvp_cg_logreg, train_set)
 # visualize_topk_samples(IF_cg_logreg, num_sample=5)
 # np.save('./IF_cg_logreg.npy', IF_cg_logreg)
-IF_cg_logreg = np.load('./IF_cg_logreg.npy')
+IF = np.load(file_dir+'/'+filename+'.npy')
 
 num_sample=5
-argsort = np.argsort(IF_cg_logreg) 
+argsort = np.argsort(IF) 
 topk = argsort[-1:-num_sample-1:-1]
 botk = argsort[0:num_sample]
 
@@ -84,10 +88,13 @@ topk_list = [trainval_list[i] for i in topk]
 botk_list = [trainval_list[i] for i in botk]
 print(botk_list)
 
-tsne_list = np.concatenate([test_list, temp_list, topk_list, botk_list, [test_list[1]]]) # list concatenation
-tsne_set = dataset.LazyDataset(root_dir, tsne_list, noisy_anno_dict)
+set_trace()
+test_idx = np.argmax([file_dir.split('/')[-1] in e for e in test_list])
 
-img_test, lb_test = test_set.__getitem__(1)
+tsne_list = np.concatenate([test_list, temp_list, topk_list, botk_list, [test_list[test_idx]]]) # list concatenation
+tsne_set = dataset.LazyDataset(root_dir, tsne_list, anno_dict)
+
+img_test, lb_test = test_set.__getitem__(test_idx)
 show_image_from_data(img_test)
 
 print('ground truth label: ', anno_dict['classes'][str(np.argmax(lb_test))])
@@ -108,8 +115,8 @@ tsne_embeddings = TSNE(n_components=2, verbose=1).fit_transform(tsne_features)
 toc = time.time()
 print('TSNE takes {} secs'.format(toc-tic))
 print(tsne_embeddings.shape)
-np.save('./tsne_embeddings.npy',tsne_embeddings)
-#tsne_embeddings = np.load('./tsne_embeddings.npy')
+np.save('./images/tsne/tsne_embeddings.npy',tsne_embeddings)
+#tsne_embeddings = np.load('./images/tsne/tsne_embeddings.npy')
 
 from datasets.utils import view_tsne_embeddings
 
@@ -124,7 +131,4 @@ for i in range(num_sample):
     images[-2*num_sample+i-1][2] = 1 # topk to blue
 
 emb_image = view_tsne_embeddings(tsne_embeddings, images, test_labels)
-imsave(os.path.join('./convnet_embed.jpg'), emb_image)
-
-# gradCAM for top influential cases?
-#from datasets.utils import view_image_cam_pairs
+imsave(os.path.join('./images/tsne/convnet_embed_'+filename+'.jpg'), emb_image)
