@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 from scipy.optimize import fmin_ncg, fmin_cg
 
-from hvp import grad_inner_product, HVP
+from modules.hvp import grad_inner_product, HVP
 
 # Conjugate Gradient
 def dic2vec(dic):
@@ -128,14 +128,13 @@ def get_inverse_hvp_se(model, y, v, data_set, **kwargs):
     batch_size = kwargs.pop('batch_size', 1)
     num_samples = kwargs.pop('num_samples', 1) # the number of samples(:stochatic estimation of IF) to be averaged
     tolerance = kwargs.pop('tolerance', 1e-2) # the difference btw l2 norms of current and previous vector used for early stopping
+    num_workers = kwargs.pop('num_workers', 6)
     verbose = kwargs.pop('verbose', False)
     
-    dataloader = DataLoader(data_set, batch_size, shuffle=True, num_workers=6)
+    dataloader = DataLoader(data_set, batch_size, shuffle=True, num_workers=num_workers)
     
     inv_hvps = []
     
-    from ipdb import set_trace
-    set_trace()
     params = list(v.keys())
     params0 = [p.value for p in params]
     
@@ -163,8 +162,9 @@ def get_inverse_hvp_se(model, y, v, data_set, **kwargs):
             # divergence check
             if np.isnan(cur_norm):
                 print('## The result has been diverged ##')
-                [p.value = pv0 for p, pv0 in zip(params, params0)]
-                print('PLEASE RECOVER NET PARAMETERS')
+                # recover the params from NaN
+                for p, pv0 in zip(params, params0):
+                    p.value = pv0
                 break
             
             # convergence check
@@ -180,3 +180,34 @@ def get_inverse_hvp_se(model, y, v, data_set, **kwargs):
     inv_hvp_val = {ks: np.mean([inv_hvps[i][ks] for i in range(num_samples)], axis=0) for ks in inv_hvps[0].keys()}
     
     return inv_hvp_val
+
+def get_influence_val(model, ihvp, data_set, cosine=False, **kwargs):
+    # Calculate influence function value when H^-1 v_test is given w.r.t. data_set
+    # cf) this will be calculated sample-wisely due to memory issue
+    
+    # ihvp: inverse of Hessian Vector Product (dictionary) (e.g. H^-1 v_test)
+    # data_set: data set to be fed (dataset class) (e.g. train_set)
+    # kwargs: hyperparameters
+    
+    num_workers = kwargs.pop('num_workers', 6)
+
+    if_list = []
+
+    params = list(ihvp.keys()) # not (model.logits.parameters) due to freezing
+
+    num_data = data_set.__len__()
+    dataloader = DataLoader(data_set, 1, shuffle=False, num_workers=num_workers)
+
+    t1 = time.time()
+    for img, lb in dataloader:
+        img = img.numpy(); lb = lb.numpy()
+        gd = model.loss.grad({model.X:img, model.y:lb}, wrt=params)
+        # cosine normalization
+        if cosine:
+            nrm = np.sqrt(grad_inner_product(gd,gd))
+            gd = {k: v/nrm for k,v in gd.items()}
+        if_val = -grad_inner_product(ihvp, gd) / num_data
+        if_list.append(if_val)
+    print('get_influence_val takes {} sec'.format(time.time()-t1))
+
+    return if_list

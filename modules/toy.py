@@ -51,6 +51,7 @@ images = np.asarray([[2.]], dtype=np.float32)
 labels = np.asarray([[1.]], dtype=np.float32)
 
 train_set = SimpleDataset(images,labels)
+set_trace()
 
 print('######## damping = 0.0, desired solution: [1.25, -0.08] ########'); t1 = time.time()
 ihvp_ncg = get_inverse_hvp_cg(net, net.loss, v_feed, train_set, method='Newton', **{'damping': 0.0}); t2 = time.time()
@@ -59,6 +60,9 @@ ihvp_se = get_inverse_hvp_se(net, net.loss, v_feed, train_set, **{'damping': 0.0
 print('inverse hvp_ncg', ihvp_ncg, '\ntime: ', t2-t1)
 print('inverse hvp_cg', ihvp_cg, '\ntime: ', t3-t2 )
 print('inverse hvp_se', ihvp_se, '\ntime: ', t4-t3)
+
+# check divergence when scale is low, and check the weight parameter recovery
+#ihvp_se = get_inverse_hvp_se(net, net.loss, v_feed, train_set, **{'scale': 1, 'num_samples': 3, 'damping': 0.0, 'recursion_depth': 100}); t4 = time.time()
 
 # print('inverse hvp_ncg', get_inverse_hvp_cg(net, net.loss, v_feed, train_set, method='Newton', **{'damping': 0.1}))
 # print('inverse hvp_cg', get_inverse_hvp_cg(net, net.loss, v_feed, train_set, **{'damping': 0.1}))
