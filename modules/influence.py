@@ -10,19 +10,25 @@ from scipy.optimize import fmin_ncg, fmin_cg
 from modules.hvp import grad_inner_product, HVP
 
 # Conjugate Gradient
-def dic2vec(dic):
+def dic2vec(dic, order=None):
     # convert a dictionary with matrix values to a 1D vector
     # e.g. gradient of network -> 1D vector
-    vec = np.concatenate([val.reshape(-1) for val in dic.values()])
+    # order: list of keys of dic to specify order
+    if order == None:
+        order = dic.keys()
+    vec = np.concatenate([dic[key].reshape(-1) for key in order])
     
     return vec
 
-def vec2dic(vec, fmt):
+def vec2dic(vec, fmt, order=None):
     # convert a 1D vector to a dictionary of format fmt
     # fmt: {key: val.shape for (key,val) in dict}
-    fmt_idx = [np.prod(val) for val in fmt.values()]
+    # order: list of keys of dic to specify order
+    if order == None:
+        order = fmt.keys()
+    fmt_idx = [np.prod(fmt[key]) for key in order]
     vec_split = [vec[sum(fmt_idx[:i]):sum(fmt_idx[:i+1])] for i in range(len(fmt_idx))]
-    dic = {key: vec_split[i].reshape(shape) for (i,(key,shape)) in enumerate(fmt.items())}
+    dic = {key: vec_split[i].reshape(fmt[key]) for (i,key) in enumerate(order)}
 
     return dic
 
@@ -48,6 +54,7 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
     
     t0 = time.time()
     get_inverse_hvp_cg.cnt = 0
+    order = list(v.keys())
 
     def HVP_minibatch_val(y, v):
         # Calculate Hessian vector product w.r.t whole dataset
@@ -73,29 +80,29 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         return hvp_batch
 
     def fmin_loss_fn(x):
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, x_dic)
 
         return 0.5 * grad_inner_product(hvp_val, x_dic) - grad_inner_product(v, x_dic)
 
     def fmin_grad_fn(x):
         # x: 1D vector
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, x_dic)
-        hvp_flat = dic2vec(hvp_val)
-        v_flat = dic2vec(v)
+        hvp_flat = dic2vec(hvp_val, order=order)
+        v_flat = dic2vec(v,order=order)
 
         return hvp_flat - v_flat
     
     def fmin_hvp_fn(x, p):
-        p_dic = vec2dic(p, {key: val.shape for (key, val) in v.items()})
+        p_dic = vec2dic(p, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, p_dic)
-        hvp_flat = dic2vec(hvp_val)
+        hvp_flat = dic2vec(hvp_val, order=order)
 
         return hvp_flat
 
     def cg_callback(x):
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         print('iteration: {}'.format(get_inverse_hvp_cg.cnt), ', ', time.time()-t0, '(sec) elapsed')
         print('vector element-wise square: ', grad_inner_product(x_dic, x_dic))
         get_inverse_hvp_cg.cnt += 1
@@ -104,14 +111,14 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
     
     if method == 'Newton':
         fmin_results = fmin_ncg(\
-                f = fmin_loss_fn, x0 = dic2vec(v), fprime = fmin_grad_fn,\
+                f = fmin_loss_fn, x0 = dic2vec(v,order=order), fprime = fmin_grad_fn,\
                 fhess_p = fmin_hvp_fn, avextol = avextol, maxiter = maxiter, callback=cg_callback)
     else:
         fmin_results = fmin_cg(\
-                f = fmin_loss_fn, x0 = dic2vec(v), fprime = fmin_grad_fn,\
+                f = fmin_loss_fn, x0 = dic2vec(v,order=order), fprime = fmin_grad_fn,\
                 maxiter = maxiter, callback = cg_callback)
     
-    return vec2dic(fmin_results, {key: val.shape for (key, val) in v.items()})
+    return vec2dic(fmin_results, {key: val.shape for (key, val) in v.items()}, order=order)
 
 # Stochastic Estimation (or LISSA)
 def get_inverse_hvp_se(model, y, v, data_set, **kwargs):

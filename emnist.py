@@ -13,12 +13,15 @@ from modules.utils import visualize_topk_samples
 
 ############# FIXME ########################
 root_dir = '/Data/emnist/balanced/original/'
-save_dir = '/Data/result/influence-emnist-fixeddataloader2'
+save_dir = '/Data/result/influence-emnist/'
 mean_dir = './refer/datasets-analysis-cntk/output/mean_emnist.npy'
 net_dir = '/Data/checkpts/emnist/model_fold_1_trainval_ratio_1.0.dnn'
-idx_tests = range(0,1)
+idx_tests = range(0,80)
 # check try/except w.r.t save_dir
 ############# FIXME ########################
+
+from ipdb import set_trace
+set_trace()
 
 try:
     trainval_list = np.load(save_dir+'trainval_list.npy')
@@ -28,6 +31,8 @@ try:
 except:
     #trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1', sample_size=1000)
     #test_list, _ = dataset.read_data_subset(root_dir, mode='test', sample_size=500)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1')
     test_list, _ = dataset.read_data_subset(root_dir, mode='test')
     np.save(save_dir+'trainval_list.npy', trainval_list)
@@ -86,9 +91,6 @@ for idx_test in idx_tests:
     # Conjugate Gradient
     t1 = time.time()
     ihvp = get_inverse_hvp_cg(net, net.loss, v_logreg, train_set, **{'damping':0.0, 'maxiter':50})
-    from ipdb import set_trace
-    set_trace()
-    # check v_logreg, ihvp, train_set, etc.
     if_val = get_influence_val(net, ihvp, train_set)
     print('CG takes {} sec, and its max/min value {}'.format(time.time()-t1,\
             [max(if_val), min(if_val)]))

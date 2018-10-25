@@ -13,7 +13,7 @@ def show_image_from_data(img, show=True):
     # show image from numpy array
     # img: (C,W,H) numpy array
 
-    if show:
+    if not show:
         return 0
 
     #img_show = np.squeeze(np.transpose(img,[1,2,0]))
@@ -86,6 +86,8 @@ def visualize_topk_samples(measure, data_set, num_sample=5, mask=None,\
         
         if show:
             plt.show()
+        else:
+            plt.close()
 
         return 0
     
