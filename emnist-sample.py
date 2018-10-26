@@ -12,8 +12,9 @@ from modules.influence import get_inverse_hvp_cg, get_inverse_hvp_se, get_influe
 from modules.utils import visualize_topk_samples 
 
 ############# FIXME ########################
+num_sample = 1000
 root_dir = '/Data/emnist/balanced/original/'
-save_dir = '/Data/result/influence-emnist/'
+save_dir = '/Data/result/influence-emnist-sample/{}/'.format(num_sample)
 mean_dir = './refer/datasets-analysis-cntk/output/mean_emnist.npy'
 net_dir = '/Data/checkpts/emnist/model_fold_1_trainval_ratio_1.0.dnn'
 idx_tests = range(0,1)
@@ -29,11 +30,9 @@ try:
     with open(root_dir+'annotation/annotation1.json', 'r') as fid:
         anno_dict = json.load(fid)
 except:
-    #trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1', sample_size=1000)
-    #test_list, _ = dataset.read_data_subset(root_dir, mode='test', sample_size=500)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1')
+    trainval_list, anno_dict = dataset.read_data_subset(root_dir, mode='train1', sample_size=num_sample)
     test_list, _ = dataset.read_data_subset(root_dir, mode='test')
     np.save(save_dir+'trainval_list.npy', trainval_list)
     np.save(save_dir+'test_list.npy', test_list)

@@ -4,8 +4,8 @@ try_set_default_device(gpu(0))
 import numpy as np
 import time
 
-from hvp import HVP
-from influence import get_inverse_hvp_cg, get_inverse_hvp_se
+from modules.hvp import HVP
+from modules.influence import get_inverse_hvp_cg, get_inverse_hvp_se
 
 class SimpleNet(object):
     def __init__(self):
@@ -35,8 +35,11 @@ net = SimpleNet()
 
 params = net.pred.parameters
 
-x_feed = {net.X:np.array([[2.]],dtype=np.float32), net.y:np.array([[1.]],dtype=np.float32)}
+#x_feed = {net.X:np.array([[2.]],dtype=np.float32), net.y:np.array([[1.]],dtype=np.float32)}
+x_feed = {net.X:np.array([[2.],[2.]],dtype=np.float32), net.y:np.array([[1.],[1.]],dtype=np.float32)}
 v_feed = {p: np.ones_like(p.value) for p in params}
+
+set_trace()
 
 print('w1 = \n', params[0].value, '\nw2 = \n', params[1].value, '\nloss = \n', net.loss.eval(x_feed))
 params[0].value = np.asarray([[1.]])

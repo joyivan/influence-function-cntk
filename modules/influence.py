@@ -1,4 +1,5 @@
 # implementation of inverse HVP using conjugate gradient and stochastic estimation
+from ipdb import set_trace
 
 import numpy as np
 import time
@@ -49,12 +50,13 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
     maxiter = kwargs.pop('maxiter', 1e1)
     num_workers = kwargs.pop('num_workers', 6)
     
-    #dataloader = DataLoader(data_set, batch_size, shuffle=True, num_workers=num_workers)
-    dataloader = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
+    get_inverse_hvp_cg.dl = DataLoader(data_set, batch_size, shuffle=True, num_workers=num_workers)
+    #get_inverse_hvp_cg.dl = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
+    get_inverse_hvp_cg.cnt = 0
+    get_inverse_hvp_cg.order = list(v.keys())
+    get_inverse_hvp_cg.num_data = data_set.__len__()
     
     t0 = time.time()
-    get_inverse_hvp_cg.cnt = 0
-    order = list(v.keys())
 
     def HVP_minibatch_val(y, v):
         # Calculate Hessian vector product w.r.t whole dataset
@@ -65,21 +67,23 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         ## dataloader: dataloader for the training set
         ## damping: damp term to make hessian convex
 
-        num_data = data_set.__len__()
-
         hvp_batch = {key: np.zeros_like(value) for key,value in v.items()}
 
-        for img, lb in dataloader:
+        for img, lb in get_inverse_hvp_cg.dl:
             img = img.numpy(); lb = lb.numpy()
             x_feed = {model.X: img, model.y:lb}
             hvp = HVP(y,x_feed,v)
             # add hvp value
             for ks in hvp.keys():
-                hvp_batch[ks] += hvp[ks]/num_data # gradient will do batch-wise summation
+                #hvp_batch[ks] += hvp[ks]/get_inverse_hvp_cg.num_data # gradient will do batch-wise summation
+                hvp_batch[ks] += hvp[ks] # gradient will do batch-wise summation
+        print(hvp_batch[ks])
+        set_trace()
 
         return hvp_batch
 
     def fmin_loss_fn(x):
+        order = get_inverse_hvp_cg.order
         x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, x_dic)
 
@@ -87,6 +91,7 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
 
     def fmin_grad_fn(x):
         # x: 1D vector
+        order = get_inverse_hvp_cg.order
         x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, x_dic)
         hvp_flat = dic2vec(hvp_val, order=order)
@@ -95,6 +100,7 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         return hvp_flat - v_flat
     
     def fmin_hvp_fn(x, p):
+        order = get_inverse_hvp_cg.order
         p_dic = vec2dic(p, {key: val.shape for (key, val) in v.items()}, order=order)
         hvp_val = HVP_minibatch_val(y, p_dic)
         hvp_flat = dic2vec(hvp_val, order=order)
@@ -102,6 +108,7 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         return hvp_flat
 
     def cg_callback(x):
+        order = get_inverse_hvp_cg.order
         x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
         print('iteration: {}'.format(get_inverse_hvp_cg.cnt), ', ', time.time()-t0, '(sec) elapsed')
         print('vector element-wise square: ', grad_inner_product(x_dic, x_dic))
@@ -109,6 +116,7 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         
         return 0
     
+    order = get_inverse_hvp_cg.order
     if method == 'Newton':
         fmin_results = fmin_ncg(\
                 f = fmin_loss_fn, x0 = dic2vec(v,order=order), fprime = fmin_grad_fn,\
