@@ -4,7 +4,7 @@ try_set_default_device(gpu(0))
 import numpy as np
 import time
 
-from modules.hvp import HVP
+from modules.hvp2 import HVP
 from modules.influence import get_inverse_hvp_cg, get_inverse_hvp_se
 
 class SimpleNet(object):

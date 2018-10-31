@@ -44,7 +44,8 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
     # kwargs: hyperparameters for conjugate gradient
 
     # hyperparameters
-    batch_size = kwargs.pop('batch_size', 128)
+    #batch_size = kwargs.pop('batch_size', 128)
+    batch_size = kwargs.pop('batch_size', 1)
     damping = kwargs.pop('damping', 0.0)
     avextol = kwargs.pop('avextol', 1e-8)
     maxiter = kwargs.pop('maxiter', 1e1)
@@ -75,10 +76,8 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
             hvp = HVP(y,x_feed,v)
             # add hvp value
             for ks in hvp.keys():
-                #hvp_batch[ks] += hvp[ks]/get_inverse_hvp_cg.num_data # gradient will do batch-wise summation
-                hvp_batch[ks] += hvp[ks] # gradient will do batch-wise summation
-        print(hvp_batch[ks])
-        set_trace()
+                hvp_batch[ks] += hvp[ks]/get_inverse_hvp_cg.num_data # gradient will do batch-wise summation
+                #hvp_batch[ks] += hvp[ks] # gradient will do batch-wise summation # FIXME
 
         return hvp_batch
 

@@ -1,6 +1,10 @@
 # Hessian Vector Product (Using numerical differentiation)
 import numpy as np
 
+# FIXME
+import cntk as C
+from ipdb import set_trace
+
 def grad_inner_product(grad1, grad2):
     # inner product for dictionary-format gradients (output scalar value)
 
@@ -19,8 +23,8 @@ def weight_update(w, v, r):
     # r: hyperparameter for a gradient (scalar)
 
     for p in w:
-        p.value += r * v[p]
-
+        #p.value += r * v[p]
+        C.assign(p, p.value+r*v[p])
     return 0
 
 def HVP(y, x, v):
