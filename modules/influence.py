@@ -1,6 +1,7 @@
 # implementation of inverse HVP using conjugate gradient and stochastic estimation
 from ipdb import set_trace
 
+import cntk as C
 import numpy as np
 import time
 
@@ -9,6 +10,22 @@ from torch.utils.data import DataLoader
 from scipy.optimize import fmin_ncg, fmin_cg
 
 from modules.hvp import grad_inner_product, HVP
+
+def disable_dropout(y):
+    # make dropout_rate which is used in 'C.layers.Dropout' to 0 and clone
+    # this should be done if you use y.grad in 'test phase'
+
+    # input share
+    subs = {ip: ip for ip in y.inputs if ip.kind()==0} # add to substitutions if input_variable
+
+    # dropout substitution
+    list_layers = y.find_all_with_name('')
+    list_dropout = [l for l in list_layers if l.as_string().split(':')[0]=='Dropout']
+    for do in list_dropout:
+        assert len(do.inputs)==1, 'Input node of Dropout layers could be multiple?'
+        subs[do] = C.layers.Dropout(dropout_rate=0.0)(do.inputs[0])
+
+    return y.clone('share', substitutions=subs)
 
 # Conjugate Gradient
 def dic2vec(dic, order=None):
@@ -44,18 +61,15 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
     # kwargs: hyperparameters for conjugate gradient
 
     # hyperparameters
-    #batch_size = kwargs.pop('batch_size', 128)
-    batch_size = kwargs.pop('batch_size', 1)
+    batch_size = kwargs.pop('batch_size', 128)
     damping = kwargs.pop('damping', 0.0)
     avextol = kwargs.pop('avextol', 1e-8)
-    maxiter = kwargs.pop('maxiter', 1e1)
+    maxiter = kwargs.pop('maxiter', 1e2)
     num_workers = kwargs.pop('num_workers', 6)
     
-    get_inverse_hvp_cg.dl = DataLoader(data_set, batch_size, shuffle=True, num_workers=num_workers)
-    #get_inverse_hvp_cg.dl = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
+    get_inverse_hvp_cg.dl = DataLoader(data_set, batch_size, shuffle=False, num_workers=num_workers)
     get_inverse_hvp_cg.cnt = 0
-    get_inverse_hvp_cg.order = list(v.keys())
-    get_inverse_hvp_cg.num_data = data_set.__len__()
+    get_inverse_hvp_cg.damp = damping
     
     t0 = time.time()
 
@@ -68,6 +82,8 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
         ## dataloader: dataloader for the training set
         ## damping: damp term to make hessian convex
 
+        num_data = data_set.__len__()
+
         hvp_batch = {key: np.zeros_like(value) for key,value in v.items()}
 
         for img, lb in get_inverse_hvp_cg.dl:
@@ -76,56 +92,69 @@ def get_inverse_hvp_cg(model, y, v, data_set, method='Basic', **kwargs):
             hvp = HVP(y,x_feed,v)
             # add hvp value
             for ks in hvp.keys():
-                hvp_batch[ks] += hvp[ks]/get_inverse_hvp_cg.num_data # gradient will do batch-wise summation
-                #hvp_batch[ks] += hvp[ks] # gradient will do batch-wise summation # FIXME
+                hvp_batch[ks] += hvp[ks]/num_data # gradient will do batch-wise summation
+
+        # damping term
+        for ks in hvp.keys():
+            hvp_batch[ks] += get_inverse_hvp_cg.damp * v[ks]
 
         return hvp_batch
 
-    def fmin_loss_fn(x):
-        order = get_inverse_hvp_cg.order
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
-        hvp_val = HVP_minibatch_val(y, x_dic)
+    def get_fmin_loss_fn(y, v):
+        def fmin_loss_fn(x):
+            x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+            hvp_val = HVP_minibatch_val(y, x_dic)
 
-        return 0.5 * grad_inner_product(hvp_val, x_dic) - grad_inner_product(v, x_dic)
+            return 0.5 * grad_inner_product(hvp_val, x_dic) - grad_inner_product(v, x_dic)
+        return fmin_loss_fn
 
-    def fmin_grad_fn(x):
-        # x: 1D vector
-        order = get_inverse_hvp_cg.order
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
-        hvp_val = HVP_minibatch_val(y, x_dic)
-        hvp_flat = dic2vec(hvp_val, order=order)
-        v_flat = dic2vec(v,order=order)
+    def get_fmin_grad_fn(y, v):
+        def fmin_grad_fn(x):
+            # x: 1D vector
+            x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+            hvp_val = HVP_minibatch_val(y, x_dic)
+            hvp_flat = dic2vec(hvp_val)
+            v_flat = dic2vec(v)
 
-        return hvp_flat - v_flat
+            return hvp_flat - v_flat
+        return fmin_grad_fn
     
-    def fmin_hvp_fn(x, p):
-        order = get_inverse_hvp_cg.order
-        p_dic = vec2dic(p, {key: val.shape for (key, val) in v.items()}, order=order)
-        hvp_val = HVP_minibatch_val(y, p_dic)
-        hvp_flat = dic2vec(hvp_val, order=order)
+    def get_fmin_hvp_fn(y, v):
+        def fmin_hvp_fn(x, p):
+            p_dic = vec2dic(p, {key: val.shape for (key, val) in v.items()})
+            hvp_val = HVP_minibatch_val(y, p_dic)
+            hvp_flat = dic2vec(hvp_val)
 
-        return hvp_flat
-
-    def cg_callback(x):
-        order = get_inverse_hvp_cg.order
-        x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()}, order=order)
-        print('iteration: {}'.format(get_inverse_hvp_cg.cnt), ', ', time.time()-t0, '(sec) elapsed')
-        print('vector element-wise square: ', grad_inner_product(x_dic, x_dic))
-        get_inverse_hvp_cg.cnt += 1
-        
-        return 0
+            return hvp_flat
+        return fmin_hvp_fn
     
-    order = get_inverse_hvp_cg.order
+    def get_cg_callback(v, t0):
+        def cg_callback(x):
+            print('iteration: {}'.format(get_inverse_hvp_cg.cnt), ', ', time.time()-t0, '(sec) elapsed')
+            print('vector element-wise square: ', np.inner(x, x))
+            #x_dic = vec2dic(x, {key: val.shape for (key, val) in v.items()})
+            #print('vector element-wise square: ', grad_inner_product(x_dic, x_dic))
+            get_inverse_hvp_cg.cnt += 1
+            
+            return 0
+        return cg_callback
+    
+    y_dd = disable_dropout(y)
+    fmin_loss_fn = get_fmin_loss_fn(y_dd, v)
+    fmin_grad_fn = get_fmin_grad_fn(y_dd, v)
+    fmin_hvp_fn = get_fmin_hvp_fn(y_dd, v)
+    cg_callback = get_cg_callback(v, t0)
+
     if method == 'Newton':
         fmin_results = fmin_ncg(\
-                f = fmin_loss_fn, x0 = dic2vec(v,order=order), fprime = fmin_grad_fn,\
+                f = fmin_loss_fn, x0 = dic2vec(v), fprime = fmin_grad_fn,\
                 fhess_p = fmin_hvp_fn, avextol = avextol, maxiter = maxiter, callback=cg_callback)
     else:
         fmin_results = fmin_cg(\
-                f = fmin_loss_fn, x0 = dic2vec(v,order=order), fprime = fmin_grad_fn,\
+                f = fmin_loss_fn, x0 = dic2vec(v), fprime = fmin_grad_fn,\
                 maxiter = maxiter, callback = cg_callback)
     
-    return vec2dic(fmin_results, {key: val.shape for (key, val) in v.items()}, order=order)
+    return vec2dic(fmin_results, {key: val.shape for (key, val) in v.items()})
 
 # Stochastic Estimation (or LISSA)
 def get_inverse_hvp_se(model, y, v, data_set, **kwargs):
@@ -196,10 +225,11 @@ def get_inverse_hvp_se(model, y, v, data_set, **kwargs):
     
     return inv_hvp_val
 
-def get_influence_val(model, ihvp, data_set, cosine=False, **kwargs):
+def get_influence_val(model, y, ihvp, data_set, cosine=False, **kwargs):
     # Calculate influence function value when H^-1 v_test is given w.r.t. data_set
     # cf) this will be calculated sample-wisely due to memory issue
     
+    # y: scalar function output of the neural network (e.g. model.loss)
     # ihvp: inverse of Hessian Vector Product (dictionary) (e.g. H^-1 v_test)
     # data_set: data set to be fed (dataset class) (e.g. train_set)
     # kwargs: hyperparameters
@@ -208,6 +238,7 @@ def get_influence_val(model, ihvp, data_set, cosine=False, **kwargs):
 
     if_list = []
 
+    y_dd = disable_dropout(y)
     params = list(ihvp.keys()) # not (model.logits.parameters) due to freezing
 
     num_data = data_set.__len__()
@@ -216,7 +247,7 @@ def get_influence_val(model, ihvp, data_set, cosine=False, **kwargs):
     t1 = time.time()
     for img, lb in dataloader:
         img = img.numpy(); lb = lb.numpy()
-        gd = model.loss.grad({model.X:img, model.y:lb}, wrt=params)
+        gd = y_dd.grad({model.X:img, model.y:lb}, wrt=params)
         # cosine normalization
         if cosine:
             nrm = np.sqrt(grad_inner_product(gd,gd))

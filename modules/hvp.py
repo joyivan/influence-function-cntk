@@ -43,12 +43,16 @@ def HVP(y, x, v):
     weight_update(w, v, +r)
     g_plus = y.grad(x, wrt=w)
 
+    # weight reconstruction
+    # intermediate reconstruction may increase compuational cost, but decrease the precision loss
+    weight_update(w, v, -r)
+
     # gradient for minus
-    weight_update(w, v, -2*r)
+    weight_update(w, v, -r)
     g_minus = y.grad(x, wrt=w)
 
     # weight reconstruction
-    weight_update(w, v, +r) # FIXME : this does not reconstruct the weights well
+    weight_update(w, v, +r)
 
     hvp = {ks: (g_plus[ks] - g_minus[ks])/(2*r) for ks in g_plus.keys()}
 

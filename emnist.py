@@ -15,7 +15,7 @@ from cntk.device import try_set_default_device, gpu
 try_set_default_device(gpu(0))
 
 ############# FIXME ########################
-num_sample = 100
+num_sample = 1000
 root_dir = '/Data/emnist/balanced/original/'
 save_dir = '/Data/result/influence-emnist-sample/{}/'.format(num_sample)
 mean_dir = './refer/datasets-analysis-cntk/output/mean_emnist.npy'
@@ -90,15 +90,18 @@ for idx_test in idx_tests:
     p_ftex = net.d['dense1'].parameters
     p_logreg = tuple(set(params) - set(p_ftex))
     print(p_logreg)
-    p_logreg = params # FIXME
-    v_logreg = net.loss.grad({net.X:img_test, net.y:lb_test}, wrt=p_logreg)
+    # FIXME
+    from modules.influence import disable_dropout
+    net_loss_without_dropout = disable_dropout(net.loss)
+    v_logreg = net_loss_without_dropout.grad({net.X:img_test, net.y:lb_test}, wrt=p_logreg) # randomness
+    # FIXME
 
     # Calculate influence function value with some methods
 
     # Conjugate Gradient
     t1 = time.time()
-    ihvp = get_inverse_hvp_cg(net, net.loss, v_logreg, train_set, **{'damping':0.0, 'maxiter':50})
-    if_val = get_influence_val(net, ihvp, train_set)
+    ihvp = get_inverse_hvp_cg(net, net.loss, v_logreg, train_set, **{'damping':0.0, 'maxiter':100})
+    if_val = get_influence_val(net, net.loss, ihvp, train_set)
     print('CG takes {} sec, and its max/min value {}'.format(time.time()-t1,\
             [max(if_val), min(if_val)]))
     np.save(save_path+'/if_val_cg.npy', if_val)
