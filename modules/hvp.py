@@ -1,18 +1,6 @@
 # Hessian Vector Product (Using numerical differentiation)
 import numpy as np
 
-def grad_inner_product(grad1, grad2):
-    # inner product for dictionary-format gradients (output scalar value)
-
-    val = 0
-
-    assert(len(grad1)==len(grad2))
-
-    for ks in grad1.keys():
-        val += np.sum(np.multiply(grad1[ks],grad2[ks]))
-
-    return val
-
 def weight_update(w, v, r):
     # w: weights of neural network (tuple)
     # v: value for delta w (dictionary, e.g., gradient value)
@@ -44,7 +32,7 @@ def HVP(y, x, v):
     g_plus = y.grad(x, wrt=w)
 
     # weight reconstruction
-    # intermediate reconstruction may increase compuational cost, but decrease the precision loss
+    # intermediate reconstruction may increase extra computational cost, but decrease the precision loss
     weight_update(w, v, -r)
 
     # gradient for minus

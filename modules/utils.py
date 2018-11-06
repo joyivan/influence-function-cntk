@@ -35,9 +35,9 @@ def visualize_topk_samples(measure, data_set, num_sample=5, mask=None,\
     # show: indicator that chooses plt.show or not
     
     def extract_annotation(data_set, indices, **kwargs):
-        # extract image annotations from dataset w.r.t. indices
+        # extract image annotations(meta data) from the dataset w.r.t. indices
         
-        # data_set: dataset structure
+        # data_set: set of data
         # indices: set of sorted and sampled index (e.g. topk)
         # kwargs: other information to be annotated
         #   key: name of this feature (str) (e.g. influence function)
@@ -94,21 +94,20 @@ def visualize_topk_samples(measure, data_set, num_sample=5, mask=None,\
     num_data = data_set.__len__()
     assert(len(measure)==num_data) 
 
-    if mask == None:
-        argsort = np.argsort(measure)
-    else:
-        assert(len(mask) == len(measure))
-        argsort = list(filter(lambda idx: mask[idx], np.argsort(measure)))
-
-    topk = argsort[-1:-num_sample-1:-1] # samples that increase loss a lot
-    botk = argsort[0:num_sample] # samples that decrease loss a lot
-
     # make folder
     if os.path.exists(save_path):
         os.makedirs(save_path)
 
     # visualize advantageous and disadvantageous samples
     if verbose == 'A/D' or verbose == 'ALL':
+        if mask == None:
+            argsort = np.argsort(measure)
+        else:
+            assert(len(mask) == len(measure))
+            argsort = list(filter(lambda idx: mask[idx], np.argsort(measure)))
+
+        topk = argsort[-1:-num_sample-1:-1] # samples that increase loss a lot
+        botk = argsort[0:num_sample] # samples that decrease loss a lot
         # advantageous samples
         images, annotations = extract_annotation(data_set, topk, **{'measure': measure})
         draw_images_with_titles(images, annotations, show=show,\
