@@ -1,0 +1,4 @@
+[submodule "refer/datasets-analysis-cntk"]
+	path = refer/datasets-analysis-cntk
+	url = https://github.com/sualab/datasets-analysis-cntk.git
+	branch = dataloader
